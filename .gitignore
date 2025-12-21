@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+
+data/incoming/*
+data/reports/*
+data/pending_retrain/*
+data/dataset/*
+
+runs/
+

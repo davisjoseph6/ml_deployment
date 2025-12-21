@@ -1,0 +1,18 @@
+# Minimal sane defaults for local retraining
+task: segment
+epochs: 50
+imgsz: 640
+batch: 4
+device: cpu      # MX250 + your torch build cannot run CUDA kernels; force CPU
+workers: 2
+patience: 20
+optimizer: auto
+lr0: 0.01
+cos_lr: true
+close_mosaic: 10
+augment: true
+cache: false
+project: runs/segment
+name: local_retrain
+exist_ok: true
+

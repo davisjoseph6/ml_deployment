@@ -1,0 +1,50 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Annotate</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <h1>Annotate (YOLO prelabel → SAM refine → validate)</h1>
+
+  <div class="row">
+    <div class="card">
+      <h3>1) Upload image</h3>
+      <input type="file" id="anno-file" accept="image/*">
+      <button id="btn-prelabel">Prelabel</button>
+      <p id="anno-meta"></p>
+    </div>
+
+    <div class="card">
+      <h3>2) Refine with SAM (draw bbox)</h3>
+      <label>Target class:</label>
+      <select id="target-class">
+        <option value="bulle">bulle</option>
+        <option value="chip">chip</option>
+      </select>
+      <button id="btn-validate">Validate (send to pending retrain)</button>
+    </div>
+
+    <div class="card">
+      <h3>3) Retrain</h3>
+      <button id="btn-retrain">Start retrain</button>
+      <pre id="train-status"></pre>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="card">
+      <h3>Overlay (drag to draw bbox)</h3>
+      <canvas id="canvas"></canvas>
+    </div>
+    <div class="card">
+      <h3>Metrics</h3>
+      <div id="metrics"></div>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
+
