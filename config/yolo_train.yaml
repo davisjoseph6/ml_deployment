@@ -1,16 +1,22 @@
-# Minimal sane defaults for local retraining
+# Minimal sane defaults for local retraining (FastAPI-triggered)
 task: segment
 epochs: 50
 imgsz: 640
 batch: 4
 device: cpu      # MX250 + your torch build cannot run CUDA kernels; force CPU
-workers: 2
+
+# In a web-app process, DataLoader multiprocessing can be flaky; keep stable
+workers: 0
+
 patience: 20
 optimizer: auto
 lr0: 0.01
 cos_lr: true
 close_mosaic: 10
-augment: true
+
+# 'augment=True' triggers a validation warning on some models; keep off
+augment: false
+
 cache: false
 project: runs/segment
 name: local_retrain

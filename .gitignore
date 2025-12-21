@@ -6,6 +6,14 @@ data/incoming/*
 data/reports/*
 data/pending_retrain/*
 data/dataset/*
+data/
+
+ai_model_artifacts/yolo_segmentation/versions/
+
+*.pyo
+*.pyd
+.git/
+.gitignore
 
 runs/
 

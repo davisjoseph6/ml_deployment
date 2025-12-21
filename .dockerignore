@@ -1,0 +1,29 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Git
+.git/
+.gitignore
+
+# Big runtime artifacts (you already mount these via volumes in docker-compose.yml)
+data/
+runs/
+
+# If you mount model artifacts as volume, exclude them from build context too:
+ai_model_artifacts/**
+
+# Re-include the directories + ONLY the two production weights
+!ai_model_artifacts/
+!ai_model_artifacts/yolo_segmentation/
+!ai_model_artifacts/yolo_segmentation/best.pt
+!ai_model_artifacts/segmentation/
+!ai_model_artifacts/segmentation/mobile_sam.pt
+
+# Misc
+*.log
+.DS_Store
+

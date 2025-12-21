@@ -1,0 +1,17 @@
+services:
+  pcbqc:
+    build: .
+    container_name: pcbqc
+    ports:
+      - "8000:8000"
+    environment:
+      - TORCH_DEVICE=cpu
+      # Optional: keep CPU usage reasonable
+      - OMP_NUM_THREADS=4
+      - MKL_NUM_THREADS=4
+    volumes:
+      - ./data:/app/data
+      - ./runs:/app/runs
+      - ./ai_model_artifacts:/app/ai_model_artifacts
+    restart: unless-stopped
+

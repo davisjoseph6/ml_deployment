@@ -4,6 +4,7 @@ Local retraining orchestration (background thread).
 - Merges pending_retrain into dataset
 - Trains YOLO segmentation using config/yolo_train.yaml (plus generated data.yaml)
 - Publishes new model to ai_model_artifacts/yolo_segmentation/best.pt + versioned copy
+- Publishes atomically (temp -> rename) to avoid partial overwrite while app is running
 """
 from __future__ import annotations
 
@@ -64,29 +65,39 @@ class RetrainManager:
             data_yaml = self._ensure_data_yaml()
 
             # Load train config
-            cfg = {}
+            cfg: Dict[str, Any] = {}
             if settings.train_config_path.exists():
                 cfg = yaml.safe_load(settings.train_config_path.read_text(encoding="utf-8")) or {}
 
             # Train
-            model = YOLO(str(settings.yolo_seg_model_path))
-            results = model.train(
+            base_model = YOLO(str(settings.yolo_seg_model_path))
+            results = base_model.train(
                 data=str(data_yaml),
                 **cfg,
             )
 
-            # Publish model artifacts (Ultralytics writes into runs/segment/...)
-            # Locate best.pt from the latest run directory
-            best_pt = self._find_latest_best_pt()
+            # Determine best.pt path robustly (prefer results.save_dir)
+            best_pt = self._best_pt_from_results(results)
             if best_pt is None:
+                best_pt = self._find_latest_best_pt()
+
+            if best_pt is None or not best_pt.exists():
                 raise RuntimeError("Could not locate trained best.pt under runs/segment/")
 
+            # Publish model artifacts
             settings.model_versions_dir.mkdir(parents=True, exist_ok=True)
+            settings.yolo_seg_model_path.parent.mkdir(parents=True, exist_ok=True)
+
             version = time.strftime("v%Y%m%d_%H%M%S")
             version_path = settings.model_versions_dir / f"{version}.pt"
 
+            # Store immutable version copy
             shutil.copy2(best_pt, version_path)
-            shutil.copy2(best_pt, settings.yolo_seg_model_path)
+
+            # Atomically replace the "current" best.pt
+            tmp_path = settings.yolo_seg_model_path.with_suffix(".pt.tmp")
+            shutil.copy2(best_pt, tmp_path)
+            tmp_path.replace(settings.yolo_seg_model_path)
 
             with self._lock:
                 self._status.state = "done"
@@ -133,6 +144,22 @@ class RetrainManager:
         }
         data_yaml.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
         return data_yaml
+
+    def _best_pt_from_results(self, results: Any) -> Path | None:
+        """
+        Try to locate best.pt from results.save_dir (most reliable).
+        """
+        save_dir = getattr(results, "save_dir", None)
+        if save_dir is None:
+            return None
+
+        try:
+            run_dir = Path(str(save_dir))
+        except Exception:
+            return None
+
+        best_pt = run_dir / "weights" / "best.pt"
+        return best_pt if best_pt.exists() else None
 
     def _find_latest_best_pt(self) -> Path | None:
         runs = settings.project_root / "runs" / "segment"

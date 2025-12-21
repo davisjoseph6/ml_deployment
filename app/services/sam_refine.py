@@ -4,9 +4,11 @@ MobileSAM refinement service.
 - Loads MobileSAM once.
 - Refines a segmentation mask given an RGB image and a bbox (x1,y1,x2,y2).
 - Defaults to CPU and auto-fallback if CUDA fails.
+- Thread-safe: internal lock around predictor.set_image + predictor.predict.
 """
 from __future__ import annotations
 
+import threading
 from typing import Tuple
 
 import numpy as np
@@ -18,6 +20,8 @@ class MobileSamService:
     """MobileSAM predictor wrapper."""
 
     def __init__(self, checkpoint_path: str, device: str = "cpu") -> None:
+        self._lock = threading.Lock()
+
         self.checkpoint_path = checkpoint_path
         self.device_str = device
         self.device = torch.device("cpu")  # force cpu by default
@@ -62,19 +66,21 @@ class MobileSamService:
         """
         assert self.predictor is not None
 
-        try:
-            self.predictor.set_image(image_rgb)
-            box = np.array(box_xyxy, dtype=np.float32)[None, :]
-            masks, _, _ = self.predictor.predict(box=box, multimask_output=False)
-            return masks[0].astype(bool)
-        except Exception as e:
-            # fallback to cpu if something CUDA-ish happens
-            if self.device_str != "cpu" and self._should_fallback_to_cpu(e):
-                self.device_str = "cpu"
-                self._load_model()
+        with self._lock:
+            try:
                 self.predictor.set_image(image_rgb)
                 box = np.array(box_xyxy, dtype=np.float32)[None, :]
                 masks, _, _ = self.predictor.predict(box=box, multimask_output=False)
                 return masks[0].astype(bool)
-            raise
+            except Exception as e:
+                # fallback to cpu if something CUDA-ish happens
+                if self.device_str != "cpu" and self._should_fallback_to_cpu(e):
+                    self.device_str = "cpu"
+                    self._load_model()
+                    assert self.predictor is not None
+                    self.predictor.set_image(image_rgb)
+                    box = np.array(box_xyxy, dtype=np.float32)[None, :]
+                    masks, _, _ = self.predictor.predict(box=box, multimask_output=False)
+                    return masks[0].astype(bool)
+                raise
 

@@ -3,16 +3,19 @@ FastAPI local app:
 - Analyze page: upload 1+ images, run YOLO-seg, compute void metrics, export CSV
 - Annotate page: prelabel with YOLO-seg, refine mask with MobileSAM, validate to pending retrain
 - Retrain: background job + status polling
+- Thread-safe inference: YOLO + SAM wrappers are internally locked
+- Auto-hot-reload YOLO weights after retrain completes (triggered by /api/retrain/status polling)
 """
 from __future__ import annotations
 
 import base64
+import os
+import threading
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
-import os
-TORCH_DEVICE = os.getenv("TORCH_DEVICE", "cpu")
+import torch
 
 import cv2
 import numpy as np
@@ -37,6 +40,9 @@ from app.services.storage import (
 from app.services.viz import encode_png, render_overlay
 from app.services.yolo_seg import InstanceSeg, YoloSegService
 
+REQUIRE_GPU = os.getenv("REQUIRE_GPU", "0") == "1"
+
+TORCH_DEVICE = os.getenv("TORCH_DEVICE", "cpu")
 APP_VERSION = "0.1.0-local"
 
 app = FastAPI(title="PCB QC Active Learning (Local)", version=APP_VERSION)
@@ -56,21 +62,19 @@ _sam: MobileSamService | None = None
 YOLO_NAMES: Dict[int, str] = {}
 
 # -----------------------------
+# Retrain hot-reload state
+# -----------------------------
+_LAST_APPLIED_MODEL_VERSION: str | None = None
+
+# -----------------------------
 # Annotate session state
 # -----------------------------
 ANNOTATE_STATE: Dict[str, Dict[str, Any]] = {}
-# structure:
-# ANNOTATE_STATE[image_id] = {
-#   "image_bgr": np.ndarray,
-#   "instances": List[InstanceSeg],
-#   "filename": str,
-#   "source_path": str,
-#   "created_at": float,
-#   "last_access": float,
-# }
+ANNOTATE_LOCK = threading.Lock()
 
 MAX_ANNOTATE_SESSIONS = 20
 ANNOTATE_TTL_SECONDS = 30 * 60  # 30 minutes
+
 
 
 def _get_yolo() -> YoloSegService:
@@ -132,23 +136,22 @@ def _prune_annotate_state(now: float | None = None) -> None:
     """
     now = now if now is not None else time.time()
 
-    # TTL prune
-    expired = [
-        k for k, v in ANNOTATE_STATE.items()
-        if (now - float(v.get("last_access", v.get("created_at", now)))) > ANNOTATE_TTL_SECONDS
-    ]
-    for k in expired:
-        ANNOTATE_STATE.pop(k, None)
+    with ANNOTATE_LOCK:
+        expired = [
+            k for k, v in ANNOTATE_STATE.items()
+            if (now - float(v.get("last_access", v.get("created_at", now)))) > ANNOTATE_TTL_SECONDS
+        ]
+        for k in expired:
+            ANNOTATE_STATE.pop(k, None)
 
-    # Max sessions prune (LRU-ish)
-    if len(ANNOTATE_STATE) > MAX_ANNOTATE_SESSIONS:
-        items = sorted(
-            ANNOTATE_STATE.items(),
-            key=lambda kv: float(kv[1].get("last_access", kv[1].get("created_at", now))),
-        )
-        extra = len(items) - MAX_ANNOTATE_SESSIONS
-        for i in range(extra):
-            ANNOTATE_STATE.pop(items[i][0], None)
+        if len(ANNOTATE_STATE) > MAX_ANNOTATE_SESSIONS:
+            items = sorted(
+                ANNOTATE_STATE.items(),
+                key=lambda kv: float(kv[1].get("last_access", kv[1].get("created_at", now))),
+            )
+            extra = len(items) - MAX_ANNOTATE_SESSIONS
+            for i in range(extra):
+                ANNOTATE_STATE.pop(items[i][0], None)
 
 
 def _validate_yolo_class_mapping(model_path: Path) -> Dict[int, str]:
@@ -178,6 +181,35 @@ def _validate_yolo_class_mapping(model_path: Path) -> Dict[int, str]:
     return names_dict
 
 
+def _maybe_apply_new_model() -> None:
+    """
+    If retrain finished and we haven't applied the model_version yet,
+    reload YOLO weights + refresh YOLO_NAMES.
+    This is triggered during status polling.
+    """
+    global _LAST_APPLIED_MODEL_VERSION, YOLO_NAMES  # noqa: PLW0603
+
+    st = retrain_manager.status()
+    if st.get("state") != "done":
+        return
+
+    model_version = st.get("model_version")
+    if not model_version:
+        return
+
+    if _LAST_APPLIED_MODEL_VERSION == model_version:
+        return
+
+    # Reload weights in the running app
+    yolo = _get_yolo()
+    yolo.reload(str(settings.yolo_seg_model_path))
+
+    # Refresh class mapping validation (will raise if mapping swapped)
+    YOLO_NAMES = _validate_yolo_class_mapping(settings.yolo_seg_model_path)
+
+    _LAST_APPLIED_MODEL_VERSION = model_version
+
+
 @app.on_event("startup")
 def startup() -> None:
     """
@@ -194,25 +226,42 @@ def startup() -> None:
     )
 
     global _yolo, _sam, YOLO_NAMES  # noqa: PLW0603
-    _yolo = YoloSegService(str(settings.yolo_seg_model_path), device=TORCH_DEVICE)
-    _sam = MobileSamService(str(settings.mobile_sam_path), device=TORCH_DEVICE)
+
+    if REQUIRE_GPU and not torch.cuda.is_available():
+        raise RuntimeError("REQUIRE_GPU=1 but torch.cuda.is_available() is False")
+
+    # Map TORCH_DEVICE to ultralytics device string:
+    # "cuda" -> "0", "cpu" -> "cpu"
+    device = TORCH_DEVICE
+    if device in ("cuda", "cuda:0"):
+        device = "0"
+
+    _yolo = YoloSegService(str(settings.yolo_seg_model_path), device=device)
+
+    # Keep SAM on CPU in prod (usually fine, and avoids GPU contention)
+    _sam = MobileSamService(str(settings.mobile_sam_path), device="cpu")
 
     YOLO_NAMES = _validate_yolo_class_mapping(settings.yolo_seg_model_path)
-
 
 @app.get("/health")
 def health() -> JSONResponse:
     y = _get_yolo()
+
+    cuda_ok = torch.cuda.is_available()
+    gpu_name = torch.cuda.get_device_name(0) if cuda_ok else None
+
     return JSONResponse(
         {
             "status": "ok",
             "version": APP_VERSION,
+            "require_gpu": REQUIRE_GPU,
+            "cuda_available": cuda_ok,
+            "gpu_name": gpu_name,
             "yolo_device": y.device,
             "yolo_model_path": str(settings.yolo_seg_model_path),
             "sam_model_path": str(settings.mobile_sam_path),
         }
     )
-
 
 @app.get("/version")
 def version() -> JSONResponse:
@@ -243,7 +292,6 @@ def annotate_page(request: Request) -> HTMLResponse:
 @app.post("/api/analyze")
 async def api_analyze(files: List[UploadFile] = File(...)) -> JSONResponse:
     yolo = _get_yolo()
-
     results: List[Dict[str, Any]] = []
 
     for f in files:
@@ -314,14 +362,16 @@ async def api_prelabel(file: UploadFile = File(...)) -> JSONResponse:
     overlay_b64 = _bgr_to_base64_png(overlay)
 
     now = time.time()
-    ANNOTATE_STATE[image_id] = {
-        "image_bgr": image_bgr,
-        "instances": instances,
-        "filename": file.filename,
-        "source_path": str(in_path),
-        "created_at": now,
-        "last_access": now,
-    }
+    with ANNOTATE_LOCK:
+        ANNOTATE_STATE[image_id] = {
+            "image_bgr": image_bgr,
+            "instances": instances,
+            "filename": file.filename,
+            "source_path": str(in_path),
+            "created_at": now,
+            "last_access": now,
+        }
+
     _prune_annotate_state(now=now)
 
     return JSONResponse(
@@ -355,17 +405,18 @@ def api_refine(
 
     _prune_annotate_state()
 
-    if image_id not in ANNOTATE_STATE:
-        return JSONResponse({"error": "Unknown image_id"}, status_code=404)
-
     if target_class not in ("chip", "bulle"):
         return JSONResponse({"error": "Invalid target_class. Use 'chip' or 'bulle'."}, status_code=400)
 
-    state = ANNOTATE_STATE[image_id]
-    state["last_access"] = time.time()
+    with ANNOTATE_LOCK:
+        if image_id not in ANNOTATE_STATE:
+            return JSONResponse({"error": "Unknown image_id"}, status_code=404)
 
-    image_bgr: np.ndarray = state["image_bgr"]
-    instances: List[InstanceSeg] = state["instances"]
+        state = ANNOTATE_STATE[image_id]
+        state["last_access"] = time.time()
+
+        image_bgr: np.ndarray = state["image_bgr"]
+        instances: List[InstanceSeg] = state["instances"]
 
     cls_id = settings.chip_cls_id if target_class == "chip" else settings.void_cls_id
 
@@ -374,7 +425,11 @@ def api_refine(
     refined = sam.refine_with_box(image_rgb=image_rgb, box_xyxy=(x1, y1, x2, y2))
 
     instances = _replace_or_add_instance(instances, cls_id=cls_id, new_mask=refined, conf=1.0)
-    state["instances"] = instances
+
+    with ANNOTATE_LOCK:
+        # write back updated instances
+        if image_id in ANNOTATE_STATE:
+            ANNOTATE_STATE[image_id]["instances"] = instances
 
     chip_masks, void_masks = _split_instances(instances)
     metrics, unassigned = compute_metrics(
@@ -400,13 +455,17 @@ def api_refine(
 def api_validate(image_id: str = Form(...)) -> JSONResponse:
     _prune_annotate_state()
 
-    if image_id not in ANNOTATE_STATE:
-        return JSONResponse({"error": "Unknown image_id"}, status_code=404)
+    with ANNOTATE_LOCK:
+        if image_id not in ANNOTATE_STATE:
+            return JSONResponse({"error": "Unknown image_id"}, status_code=404)
 
-    state = ANNOTATE_STATE[image_id]
-    filename = state["filename"]
-    src_path = Path(state["source_path"])
-    instances: List[InstanceSeg] = state["instances"]
+        state = ANNOTATE_STATE[image_id]
+        filename = state["filename"]
+        src_path = Path(state["source_path"])
+        instances: List[InstanceSeg] = state["instances"]
+
+        # Free memory: remove session after validation
+        ANNOTATE_STATE.pop(image_id, None)
 
     # Save image + labels into pending_retrain
     base = f"{image_id}_{Path(filename).stem}"
@@ -415,11 +474,7 @@ def api_validate(image_id: str = Form(...)) -> JSONResponse:
 
     img_bytes = src_path.read_bytes()
     save_bytes(img_dst, img_bytes)
-
     write_yolo_seg_labels(lbl_dst, instances)
-
-    # Free memory: remove session after validation
-    ANNOTATE_STATE.pop(image_id, None)
 
     return JSONResponse(
         {"ok": True, "pending_image": str(img_dst), "pending_label": str(lbl_dst)}
@@ -436,5 +491,7 @@ def api_retrain() -> JSONResponse:
 
 @app.get("/api/retrain/status")
 def api_retrain_status() -> JSONResponse:
+    # When polling status, also auto-apply the latest trained model (once).
+    _maybe_apply_new_model()
     return JSONResponse(retrain_manager.status())
 
