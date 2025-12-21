@@ -2,6 +2,7 @@
 
 ### 1. Setup
 
+
 ```bash
 cd ai_deployment
 python -m venv .venv
