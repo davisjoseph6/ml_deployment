@@ -1,10 +1,17 @@
+#!/usr/bin/env python3
 """
-FastAPI local app:
+FastAPI app:
 - Analyze page: upload 1+ images, run YOLO-seg, compute void metrics, export CSV
 - Annotate page: prelabel with YOLO-seg, refine mask with MobileSAM, validate to pending retrain
 - Retrain: background job + status polling
 - Thread-safe inference: YOLO + SAM wrappers are internally locked
 - Auto-hot-reload YOLO weights after retrain completes (triggered by /api/retrain/status polling)
+
+GPU enforcement:
+- If REQUIRE_GPU=1 and CUDA is not available, startup fails.
+- If REQUIRE_GPU=1, a tiny CUDA op is run at startup to catch driver/runtime mismatches early.
+- If REQUIRE_GPU=1, YOLO inference never falls back to CPU (raises instead).
+- If REQUIRE_GPU=1, YOLO device is forced to GPU ("0") even if TORCH_DEVICE was mis-set.
 """
 from __future__ import annotations
 
@@ -15,10 +22,9 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
-import torch
-
 import cv2
 import numpy as np
+import torch
 from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -41,7 +47,6 @@ from app.services.viz import encode_png, render_overlay
 from app.services.yolo_seg import InstanceSeg, YoloSegService
 
 REQUIRE_GPU = os.getenv("REQUIRE_GPU", "0") == "1"
-
 TORCH_DEVICE = os.getenv("TORCH_DEVICE", "cpu")
 APP_VERSION = "0.1.0-local"
 
@@ -74,7 +79,6 @@ ANNOTATE_LOCK = threading.Lock()
 
 MAX_ANNOTATE_SESSIONS = 20
 ANNOTATE_TTL_SECONDS = 30 * 60  # 30 minutes
-
 
 
 def _get_yolo() -> YoloSegService:
@@ -200,13 +204,9 @@ def _maybe_apply_new_model() -> None:
     if _LAST_APPLIED_MODEL_VERSION == model_version:
         return
 
-    # Reload weights in the running app
     yolo = _get_yolo()
     yolo.reload(str(settings.yolo_seg_model_path))
-
-    # Refresh class mapping validation (will raise if mapping swapped)
     YOLO_NAMES = _validate_yolo_class_mapping(settings.yolo_seg_model_path)
-
     _LAST_APPLIED_MODEL_VERSION = model_version
 
 
@@ -227,21 +227,41 @@ def startup() -> None:
 
     global _yolo, _sam, YOLO_NAMES  # noqa: PLW0603
 
+    # ---- GPU enforcement gates ----
     if REQUIRE_GPU and not torch.cuda.is_available():
         raise RuntimeError("REQUIRE_GPU=1 but torch.cuda.is_available() is False")
 
-    # Map TORCH_DEVICE to ultralytics device string:
-    # "cuda" -> "0", "cpu" -> "cpu"
+    # Catch driver/runtime mismatches early (not just "is_available")
+    if REQUIRE_GPU:
+        try:
+            _ = (torch.zeros(1, device="cuda") + 1).item()
+        except Exception as e:
+            raise RuntimeError(
+                f"REQUIRE_GPU=1 but CUDA sanity check failed: {type(e).__name__}: {e}"
+            ) from e
+
+    # ---- Device selection for Ultralytics ----
+    # Ultralytics accepts device="cpu" or device="0" (GPU0), etc.
     device = TORCH_DEVICE
-    if device in ("cuda", "cuda:0"):
+
+    # If GPU is required, FORCE GPU inference even if TORCH_DEVICE was mis-set.
+    if REQUIRE_GPU:
         device = "0"
+    else:
+        if device in ("cuda", "cuda:0"):
+            device = "0"
 
-    _yolo = YoloSegService(str(settings.yolo_seg_model_path), device=device)
+    _yolo = YoloSegService(
+        str(settings.yolo_seg_model_path),
+        device=device,
+        require_gpu=REQUIRE_GPU,
+    )
 
-    # Keep SAM on CPU in prod (usually fine, and avoids GPU contention)
+    # Keep SAM on CPU in prod (fine + avoids GPU contention)
     _sam = MobileSamService(str(settings.mobile_sam_path), device="cpu")
 
     YOLO_NAMES = _validate_yolo_class_mapping(settings.yolo_seg_model_path)
+
 
 @app.get("/health")
 def health() -> JSONResponse:
@@ -255,6 +275,7 @@ def health() -> JSONResponse:
             "status": "ok",
             "version": APP_VERSION,
             "require_gpu": REQUIRE_GPU,
+            "torch_device_env": TORCH_DEVICE,
             "cuda_available": cuda_ok,
             "gpu_name": gpu_name,
             "yolo_device": y.device,
@@ -262,6 +283,7 @@ def health() -> JSONResponse:
             "sam_model_path": str(settings.mobile_sam_path),
         }
     )
+
 
 @app.get("/version")
 def version() -> JSONResponse:
@@ -420,14 +442,12 @@ def api_refine(
 
     cls_id = settings.chip_cls_id if target_class == "chip" else settings.void_cls_id
 
-    # SAM requires RGB
     image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
     refined = sam.refine_with_box(image_rgb=image_rgb, box_xyxy=(x1, y1, x2, y2))
 
     instances = _replace_or_add_instance(instances, cls_id=cls_id, new_mask=refined, conf=1.0)
 
     with ANNOTATE_LOCK:
-        # write back updated instances
         if image_id in ANNOTATE_STATE:
             ANNOTATE_STATE[image_id]["instances"] = instances
 
@@ -463,11 +483,8 @@ def api_validate(image_id: str = Form(...)) -> JSONResponse:
         filename = state["filename"]
         src_path = Path(state["source_path"])
         instances: List[InstanceSeg] = state["instances"]
-
-        # Free memory: remove session after validation
         ANNOTATE_STATE.pop(image_id, None)
 
-    # Save image + labels into pending_retrain
     base = f"{image_id}_{Path(filename).stem}"
     img_dst = settings.pending_images_dir / f"{base}{src_path.suffix}"
     lbl_dst = settings.pending_labels_dir / f"{base}.txt"
@@ -476,9 +493,7 @@ def api_validate(image_id: str = Form(...)) -> JSONResponse:
     save_bytes(img_dst, img_bytes)
     write_yolo_seg_labels(lbl_dst, instances)
 
-    return JSONResponse(
-        {"ok": True, "pending_image": str(img_dst), "pending_label": str(lbl_dst)}
-    )
+    return JSONResponse({"ok": True, "pending_image": str(img_dst), "pending_label": str(lbl_dst)})
 
 
 @app.post("/api/retrain")
@@ -491,7 +506,6 @@ def api_retrain() -> JSONResponse:
 
 @app.get("/api/retrain/status")
 def api_retrain_status() -> JSONResponse:
-    # When polling status, also auto-apply the latest trained model (once).
     _maybe_apply_new_model()
     return JSONResponse(retrain_manager.status())
 

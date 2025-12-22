@@ -1,29 +1,54 @@
+# .dockerignore
+#
+# Goal:
+# - Keep build context small
+# - Include ONLY the two production weights inside the image
+# - Exclude large runtime dirs and historical model snapshots
+
+# ----------------------------
 # Python
+# ----------------------------
 .venv/
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 
+# ----------------------------
 # Git
+# ----------------------------
 .git/
 .gitignore
 
-# Big runtime artifacts (you already mount these via volumes in docker-compose.yml)
+# ----------------------------
+# Runtime artifacts (mounted locally)
+# ----------------------------
 data/
 runs/
 
-# If you mount model artifacts as volume, exclude them from build context too:
+# ----------------------------
+# Model artifacts
+# ----------------------------
+# Exclude everything by default
 ai_model_artifacts/**
 
-# Re-include the directories + ONLY the two production weights
+# Re-include ONLY what's needed for production:
+# - directory structure
+# - YOLO-seg best.pt
+# - MobileSAM checkpoint
 !ai_model_artifacts/
 !ai_model_artifacts/yolo_segmentation/
 !ai_model_artifacts/yolo_segmentation/best.pt
 !ai_model_artifacts/segmentation/
 !ai_model_artifacts/segmentation/mobile_sam.pt
 
+# If yolo_segmentation/versions exists locally, keep it OUT of the image
+ai_model_artifacts/yolo_segmentation/versions/**
+ai_model_artifacts/yolo_segmentation/versions/
+
+# ----------------------------
 # Misc
+# ----------------------------
 *.log
 .DS_Store
 

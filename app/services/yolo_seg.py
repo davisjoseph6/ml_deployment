@@ -1,11 +1,15 @@
+#!/usr/bin/env python3
 """
 YOLOv8 instance segmentation service wrapper.
 
 - Loads a YOLO segmentation model once.
 - Runs prediction on a BGR numpy image (OpenCV).
 - Returns list of InstanceSeg with (cls_id, conf, mask[bool]).
-- Robust to CUDA failures: auto-fallback to CPU.
 - Thread-safe: internal lock around model inference / reload.
+
+GPU enforcement:
+- If require_gpu=True, any CUDA-related failure will raise (no fallback).
+- If require_gpu=False, will attempt CPU fallback on common CUDA incompat errors.
 """
 from __future__ import annotations
 
@@ -28,11 +32,17 @@ class InstanceSeg:
 class YoloSegService:
     """Ultralytics YOLO segmentation predictor."""
 
-    def __init__(self, model_path: str, device: str = "cpu") -> None:
+    def __init__(self, model_path: str, device: str = "cpu", require_gpu: bool = False) -> None:
+        """
+        Args:
+            model_path: path to YOLO-seg .pt weights
+            device: "cpu" or "0" or "cuda:0" (Ultralytics accepts several forms)
+            require_gpu: if True, never fall back to CPU (fail fast)
+        """
         self._lock = threading.Lock()
-
         self.model_path = model_path
-        self.device = device  # "cpu" or "0" or "cuda:0"
+        self.device = device
+        self.require_gpu = require_gpu
         self.model = YOLO(model_path)
 
     def _should_fallback_to_cpu(self, err: Exception) -> bool:
@@ -40,8 +50,10 @@ class YoloSegService:
         return (
             "no kernel image is available" in msg
             or "cuda error" in msg
-            or "sm_61" in msg
+            or "sm_" in msg
             or "not compatible with the current pytorch installation" in msg
+            or "cudnn" in msg
+            or "cublas" in msg
         )
 
     def reload(self, model_path: Optional[str] = None) -> None:
@@ -78,6 +90,11 @@ class YoloSegService:
                     verbose=False,
                 )
             except Exception as e:
+                # GPU guarantee: never fallback if require_gpu=True
+                if self.require_gpu:
+                    raise
+
+                # Best-effort fallback to CPU for known CUDA incompat errors
                 if self.device != "cpu" and self._should_fallback_to_cpu(e):
                     self.device = "cpu"
                     results = self.model.predict(
