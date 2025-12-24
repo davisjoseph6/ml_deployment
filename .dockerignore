@@ -32,19 +32,18 @@ runs/
 # Exclude everything by default
 ai_model_artifacts/**
 
-# Re-include ONLY what's needed for production:
-# - directory structure
-# - YOLO-seg best.pt
-# - MobileSAM checkpoint
+# Re-include directory skeletons
 !ai_model_artifacts/
 !ai_model_artifacts/yolo_segmentation/
-!ai_model_artifacts/yolo_segmentation/best.pt
 !ai_model_artifacts/segmentation/
-!ai_model_artifacts/segmentation/mobile_sam.pt
 
-# Ensure versions dir doesn't exist inside the image at all
-ai_model_artifacts/yolo_segmentation/versions/
-ai_model_artifacts/yolo_segmentation/versions/**
+# Exclude everything inside those dirs (prevents "versions/" or other files sneaking in)
+ai_model_artifacts/yolo_segmentation/*
+ai_model_artifacts/segmentation/*
+
+# Include ONLY the two production weights
+!ai_model_artifacts/yolo_segmentation/best.pt
+!ai_model_artifacts/segmentation/mobile_sam.pt
 
 # ----------------------------
 # Misc

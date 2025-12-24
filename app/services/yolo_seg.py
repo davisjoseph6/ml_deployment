@@ -9,6 +9,7 @@ YOLOv8 instance segmentation service wrapper.
 
 GPU enforcement:
 - If require_gpu=True, any CUDA-related failure will raise (no fallback).
+- If require_gpu=True, device cannot be "cpu".
 - If require_gpu=False, will attempt CPU fallback on common CUDA incompat errors.
 """
 from __future__ import annotations
@@ -43,6 +44,10 @@ class YoloSegService:
         self.model_path = model_path
         self.device = device
         self.require_gpu = require_gpu
+
+        if self.require_gpu and self.device == "cpu":
+            raise ValueError("require_gpu=True but device='cpu'. Use device='0' (or 'cuda:0').")
+
         self.model = YOLO(model_path)
 
     def _should_fallback_to_cpu(self, err: Exception) -> bool:
@@ -66,6 +71,10 @@ class YoloSegService:
         with self._lock:
             if model_path is not None:
                 self.model_path = model_path
+
+            if self.require_gpu and self.device == "cpu":
+                raise ValueError("require_gpu=True but device='cpu'. Use device='0' (or 'cuda:0').")
+
             self.model = YOLO(self.model_path)
 
     def predict(self, image_bgr: np.ndarray, conf: float = 0.25, iou: float = 0.7) -> List[InstanceSeg]:
@@ -80,6 +89,9 @@ class YoloSegService:
         Returns:
             List of InstanceSeg
         """
+        if self.require_gpu and self.device == "cpu":
+            raise RuntimeError("GPU is required but YOLO device is 'cpu' (misconfiguration).")
+
         with self._lock:
             try:
                 results = self.model.predict(
@@ -114,7 +126,6 @@ class YoloSegService:
         if r0.masks is None or r0.boxes is None:
             return []
 
-        # masks.data: (N, H, W) tensor
         masks = r0.masks.data.detach().cpu().numpy()
         cls = r0.boxes.cls.detach().cpu().numpy()
         confs = r0.boxes.conf.detach().cpu().numpy()
