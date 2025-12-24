@@ -42,9 +42,9 @@ ai_model_artifacts/**
 !ai_model_artifacts/segmentation/
 !ai_model_artifacts/segmentation/mobile_sam.pt
 
-# If yolo_segmentation/versions exists locally, keep it OUT of the image
-ai_model_artifacts/yolo_segmentation/versions/**
+# Ensure versions dir doesn't exist inside the image at all
 ai_model_artifacts/yolo_segmentation/versions/
+ai_model_artifacts/yolo_segmentation/versions/**
 
 # ----------------------------
 # Misc
