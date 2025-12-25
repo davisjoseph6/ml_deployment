@@ -1,0 +1,28 @@
+$schema: https://azuremlschemas.azureedge.net/latest/kubernetesOnlineDeployment.schema.json
+name: blue
+endpoint_name: pcbqc-endpt
+
+# Choose ONE of the two approaches below:
+
+# ---------------------------------------------------------
+# A) “Code + environment” approach (AML inference server)
+# ---------------------------------------------------------
+code_configuration:
+  code: ../scoring
+  scoring_script: score.py
+
+environment:
+  # Option A1: use a prebuilt image (recommended if you already have a working Dockerfile)
+  image: acrpcbqc19589.azurecr.io/pcbqc-infer:9213714
+
+  # Option A2: OR use conda (heavier; often painful for torch/ultralytics)
+  # conda_file: ./aml/scoring/conda.yml
+  # image: mcr.microsoft.com/azureml/openmpi4.1.0-ubuntu20.04
+
+instance_type: cpu2-6g
+instance_count: 1
+
+request_settings:
+  request_timeout_ms: 60000
+  max_concurrent_requests_per_instance: 1
+
