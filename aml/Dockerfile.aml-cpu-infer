@@ -1,23 +1,59 @@
+# aml/Dockerfile.aml-cpu-infer
 # AML inference base (includes runit + inference server expectations)
 FROM mcr.microsoft.com/azureml/minimal-ubuntu22.04-py39-cpu-inference:latest
 
 USER root
 
+# Small OS deps:
+# - git: for any git-based pip deps you might add later
+# - libglib2.0-0: required by opencv
+# - psmisc: provides killall (your logs showed killall missing)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     libglib2.0-0 \
     psmisc \
  && rm -rf /var/lib/apt/lists/*
 
+# Keep configs out of ~/.config and avoid permission surprises
+ENV YOLO_CONFIG_DIR=/tmp/Ultralytics \
+    MPLCONFIGDIR=/tmp/matplotlib \
+    PYTHONUNBUFFERED=1
+
+# ------------------------------
+# Python deps (CPU-only)
+# ------------------------------
+# 1) Install CPU-only torch explicitly from the PyTorch CPU index
+#    (prevents huge CUDA + nvidia-* wheel downloads)
+# 2) Install the rest of deps
+# 3) Install ultralytics WITHOUT deps so it doesn't pull opencv-python (GUI) or CUDA torch again
 RUN pip install --no-cache-dir -U pip \
  && pip install --no-cache-dir \
-    numpy \
-    opencv-python-headless \
-    ultralytics
+    --index-url https://download.pytorch.org/whl/cpu \
+    torch==2.8.0+cpu torchvision==0.23.0+cpu torchaudio==2.8.0+cpu \
+ && python -c "import torch; print('torch=', torch.__version__); assert '+cpu' in torch.__version__" \
+ && pip install --no-cache-dir \
+    numpy==2.0.2 \
+    opencv-python-headless==4.12.0.88 \
+    matplotlib==3.9.4 \
+    pillow==11.3.0 \
+    PyYAML==6.0.3 \
+    scipy==1.13.1 \
+    polars==1.36.1 \
+    psutil==7.0.0 \
+    ultralytics-thop==2.0.18 \
+ && pip install --no-cache-dir --no-deps ultralytics==8.3.241
 
+# ------------------------------
 # ✅ Put scoring code where AML expects it
+# ------------------------------
+# Your K8S deployment did NOT mount code_configuration into the container (no volume mount),
+# so we bake scoring into the image and also place score.py where azmlinfsrv ends up looking.
 RUN mkdir -p /var/azureml-app/scoring
 COPY aml/scoring/ /var/azureml-app/scoring/
+
+# Also ensure the file exists at the path seen in your logs:
+# Entry Script Name: /var/runit/gunicorn/score.py
+COPY aml/scoring/score.py /var/runit/gunicorn/score.py
 
 # IMPORTANT:
 # Do NOT set CMD/ENTRYPOINT. AML will start the container using runsvdir.
