@@ -1,6 +1,14 @@
-# Force LF in IaC files
+# Force LF in IaC / scripts
 *.bicep text eol=lf
 *.yml   text eol=lf
 *.yaml  text eol=lf
 *.sh    text eol=lf
+*.md    text eol=lf
+
+# Common binaries in this repo
+*.pt    binary
+*.jpg   binary
+*.jpeg  binary
+*.png   binary
+*.docx  binary
 
