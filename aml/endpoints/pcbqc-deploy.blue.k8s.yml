@@ -1,4 +1,7 @@
 $schema: https://azuremlschemas.azureedge.net/latest/kubernetesOnlineDeployment.schema.json
+
+type: kubernetes
+  
 name: blue
 endpoint_name: pcbqc-endpt
 
