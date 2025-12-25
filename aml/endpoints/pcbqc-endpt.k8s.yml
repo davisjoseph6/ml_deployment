@@ -1,0 +1,6 @@
+$schema: https://azuremlschemas.azureedge.net/latest/kubernetesOnlineEndpoint.schema.json
+name: pcbqc-endpt
+description: PCBQC inference endpoint on AKS
+auth_mode: key
+compute: azureml:/subscriptions/ab520303-f925-4938-97a9-317b1fe8ca18/resourceGroups/rg-pcbqc-prod/providers/Microsoft.MachineLearningServices/workspaces/aml-pcbqc-prod/computes/aks-pcbqc-k8s
+
