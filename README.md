@@ -66,7 +66,7 @@ On an Azure GPU node (sm_70+ with DEVICE=cuda):
 }
 ```
 
-### 3. Test all endpoints at once:
+### 3 . Test all endpoints at once:
 
 ```bash
 source .venv/bin/activate
