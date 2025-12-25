@@ -1,0 +1,7 @@
+$schema: https://azuremlschemas.azureedge.net/latest/model.schema.json
+name: pcbqc-yolo-seg
+version: 1
+type: custom_model
+path: ../../ai_model_artifacts/yolo_segmentation/best.pt
+description: YOLOv8 segmentation weights (best.pt)
+

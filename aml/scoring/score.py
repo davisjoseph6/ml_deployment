@@ -42,8 +42,13 @@ _MODEL: Optional["YOLO"] = None
 
 
 def _model_path() -> str:
-    # If later you register a model asset, you can switch to AZUREML_MODEL_DIR.
-    # For now, default to the repo-copied artifact path inside the image.
+    model_dir = os.getenv("AZUREML_MODEL_DIR")
+    if model_dir:
+        # AML typically mounts model artifacts under this dir
+        candidate = os.path.join(model_dir, "best.pt")
+        if os.path.exists(candidate):
+            return candidate
+
     return os.getenv("PCBQC_YOLO_WEIGHTS", "/app/ai_model_artifacts/yolo_segmentation/best.pt")
 
 

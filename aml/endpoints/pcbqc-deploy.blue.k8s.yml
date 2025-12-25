@@ -16,7 +16,15 @@ code_configuration:
 
 environment:
   # Option A1: use a prebuilt image (recommended if you already have a working Dockerfile)
-  image: acrpcbqc19589.azurecr.io/pcbqc-infer:9213714
+  image: acrpcbqc19589.azurecr.io/pcbqc-aml-infer:a45fb64
+
+model: azureml:pcbqc-yolo-seg:1
+model_mount_path: /var/azureml-app/model
+
+environment_variables:
+  # AzureML will also set AZUREML_MODEL_DIR, but this is explicit and clear
+  PCBQC_YOLO_WEIGHTS: /var/azureml-app/model/best.pt
+  YOLO_DEVICE: cpu
 
   # Option A2: OR use conda (heavier; often painful for torch/ultralytics)
   # conda_file: ./aml/scoring/conda.yml

@@ -1,0 +1,24 @@
+# AML inference base (includes runit + inference server expectations)
+FROM mcr.microsoft.com/azureml/minimal-ubuntu22.04-py39-cpu-inference:latest
+
+USER root
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    libglib2.0-0 \
+    psmisc \
+ && rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir -U pip \
+ && pip install --no-cache-dir \
+    numpy \
+    opencv-python-headless \
+    ultralytics
+
+# ✅ Put scoring code where AML expects it
+RUN mkdir -p /var/azureml-app/scoring
+COPY aml/scoring/ /var/azureml-app/scoring/
+
+# IMPORTANT:
+# Do NOT set CMD/ENTRYPOINT. AML will start the container using runsvdir.
+
