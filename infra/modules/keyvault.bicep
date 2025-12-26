@@ -7,6 +7,9 @@ param tags object = {}
 @description('Use RBAC authorization (recommended).')
 param enableRbacAuthorization bool = true
 
+@description('Enable purge protection (often required by policy; irreversible once enabled).')
+param enablePurgeProtection bool = true
+
 resource kv 'Microsoft.KeyVault/vaults@2023-07-01' = {
   name: name
   location: location
@@ -20,8 +23,7 @@ resource kv 'Microsoft.KeyVault/vaults@2023-07-01' = {
     enableRbacAuthorization: enableRbacAuthorization
     publicNetworkAccess: 'Enabled'
     softDeleteRetentionInDays: 7
-    // NOTE: Purge protection can be required by some org policies; enable if needed.
-    enablePurgeProtection: false
+    enablePurgeProtection: enablePurgeProtection
     networkAcls: {
       bypass: 'AzureServices'
       defaultAction: 'Allow'

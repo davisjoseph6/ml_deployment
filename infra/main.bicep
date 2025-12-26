@@ -9,6 +9,21 @@ param env string = 'prod'
 @description('Project prefix used in resource names.')
 param prefix string = 'pcbqc'
 
+@description('AKS system pool VM size (must be allowed in selected location).')
+param aksSystemVmSize string = 'Standard_D2ps_v6'
+
+@description('AKS user pool VM size (must be allowed in selected location).')
+param aksUserVmSize string = 'Standard_B2s'
+
+@description('Deploy AKS (false lets you deploy everything else even if quota blocks AKS).')
+param deployAks bool = true
+
+@description('AKS system node count.')
+param aksSystemNodeCount int = 1
+
+@description('AKS user node count (set 0 to skip user pool).')
+param aksUserNodeCount int = 0
+
 @description('Optional tags applied to resources.')
 param tags object = {
   project: prefix
@@ -61,6 +76,7 @@ module keyvault 'modules/keyvault.bicep' = {
     location: location
     tags: tags
     enableRbacAuthorization: true
+    enablePurgeProtection: true
   }
 }
 
@@ -77,17 +93,17 @@ module servicebus 'modules/servicebus.bicep' = {
   }
 }
 
-module aks 'modules/aks.bicep' = {
+module aks 'modules/aks.bicep' = if (deployAks) {
   name: 'aks'
   params: {
     name: aksName
     location: location
     tags: tags
-    kubernetesVersion: '' // keep empty unless you verified a supported version in your region
-    systemNodeCount: 1
-    systemVmSize: 'Standard_D2s_v3'
-    userNodeCount: 1
-    userVmSize: 'Standard_D4s_v3'
+    kubernetesVersion: ''
+    systemNodeCount: aksSystemNodeCount
+    systemVmSize: aksSystemVmSize
+    userNodeCount: aksUserNodeCount
+    userVmSize: aksUserVmSize
   }
 }
 
@@ -96,16 +112,11 @@ resource acrExisting 'Microsoft.ContainerRegistry/registries@2023-01-01-preview'
   name: acrName
 }
 
-// Give AKS kubelet identity AcrPull on the registry
-resource acrPull 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+resource acrPull 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deployAks) {
   name: guid(acrExisting.id, aksName, 'AcrPull')
   scope: acrExisting
   properties: {
-    // AcrPull role definition id
-    roleDefinitionId: subscriptionResourceId(
-      'Microsoft.Authorization/roleDefinitions',
-      '7f951dda-4ed3-4680-a7ca-43fe172d538d'
-    )
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '7f951dda-4ed3-4680-a7ca-43fe172d538d')
     principalId: aks.outputs.kubeletObjectId
     principalType: 'ServicePrincipal'
   }
@@ -125,5 +136,5 @@ output keyVaultUri string = keyvault.outputs.vaultUri
 
 output serviceBusNamespace string = servicebus.outputs.name
 
-output aksClusterName string = aks.outputs.name
-output aksKubeletObjectId string = aks.outputs.kubeletObjectId
+output aksClusterName string = deployAks ? aks.outputs.name : ''
+output aksKubeletObjectId string = deployAks ? aks.outputs.kubeletObjectId : ''
