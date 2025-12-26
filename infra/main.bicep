@@ -13,7 +13,7 @@ param prefix string = 'pcbqc'
 param aksSystemVmSize string = 'Standard_D2ps_v6'
 
 @description('AKS user pool VM size (must be allowed in selected location).')
-param aksUserVmSize string = 'Standard_B2s'
+param aksUserVmSize string = 'Standard_D2ps_v6'
 
 @description('Deploy AKS (false lets you deploy everything else even if quota blocks AKS).')
 param deployAks bool = true

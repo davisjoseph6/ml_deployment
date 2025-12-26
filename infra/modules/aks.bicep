@@ -24,7 +24,8 @@ var systemPool = [
     osType: 'Linux'
     type: 'VirtualMachineScaleSets'
     upgradeSettings: {
-      maxSurge: '1' // <-- was '0'
+      maxSurge: '0' // <-- was '1'
+      maxUnavailable: '1'
     }
   }
 ]
@@ -42,6 +43,7 @@ var userPool = userNodeCount > 0 ? [
     }
     upgradeSettings: {
       maxSurge: '0'
+      maxUnavailable: '1'
     }
   }
 ] : []
