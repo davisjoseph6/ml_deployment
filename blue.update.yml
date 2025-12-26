@@ -1,0 +1,17 @@
+$schema: https://azuremlschemas.azureedge.net/latest/kubernetesOnlineDeployment.schema.json
+name: blue
+endpoint_name: pcbqc-endpt
+
+model: azureml:pcbqc-yolo-seg:1
+environment: azureml:CliV2AnonymousEnvironment:f400c7650c1058314cb699d821283e2ecc502820993e1099a8ba443d3599223a
+
+code_configuration:
+  code: ./aml/scoring
+  scoring_script: score.py
+
+instance_type: cpu2-6g
+
+environment_variables:
+  YOLO_DEVICE: cpu
+  PCBQC_YOLO_WEIGHTS: /var/azureml-app/model/best.pt
+
