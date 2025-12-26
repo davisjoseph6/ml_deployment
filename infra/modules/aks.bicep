@@ -1,36 +1,63 @@
-@description('Name of the AKS cluster')
-param aksName string
+@description('AKS cluster name.')
+param name string
 
-@description('Location of the resources')
 param location string
+param tags object = {}
 
-@description('Node pool name for CPU nodes')
-param cpuNodePoolName string = 'cpu'
+@description('If empty, AKS uses default supported version.')
+param kubernetesVersion string = ''
 
-@description('Node count for CPU nodes')
-param cpuNodeCount int = 1
+param systemNodeCount int = 1
+param systemVmSize string = 'Standard_D2s_v3'
 
-@description('Kubernetes version')
-param kubernetesVersion string = '1.31.4'
+param userNodeCount int = 1
+param userVmSize string = 'Standard_D4s_v3'
 
-@description('Resource group name')
-param rgName string
+var maybeK8sVersion = empty(kubernetesVersion) ? {} : { kubernetesVersion: kubernetesVersion }
 
 resource aks 'Microsoft.ContainerService/managedClusters@2023-05-01' = {
-  name: aksName
+  name: name
   location: location
-  properties: {
-    kubernetesVersion: kubernetesVersion
-    dnsPrefix: aksName
+  tags: tags
+  identity: {
+    type: 'SystemAssigned'
+  }
+  properties: union(maybeK8sVersion, {
+    dnsPrefix: name
+    enableRBAC: true
     agentPoolProfiles: [
       {
-        name: cpuNodePoolName
-        count: cpuNodeCount
-        vmSize: 'Standard_D2s_v3'
+        name: 'sys'
         mode: 'System'
+        count: systemNodeCount
+        vmSize: systemVmSize
         osType: 'Linux'
+        type: 'VirtualMachineScaleSets'
+      }
+      {
+        name: 'usr'
+        mode: 'User'
+        count: userNodeCount
+        vmSize: userVmSize
+        osType: 'Linux'
+        type: 'VirtualMachineScaleSets'
+        nodeLabels: {
+          workload: 'user'
+        }
       }
     ]
-    enableRBAC: true
-  }
+    networkProfile: {
+      networkPlugin: 'kubenet'
+      loadBalancerSku: 'standard'
+      outboundType: 'loadBalancer'
+    }
+  })
 }
+
+output name string = aks.name
+output id string = aks.id
+
+// Kubelet identity (used for ACR pulls)
+output kubeletObjectId string = aks.properties.identityProfile.kubeletidentity.objectId
+output kubeletClientId string = aks.properties.identityProfile.kubeletidentity.clientId
+
