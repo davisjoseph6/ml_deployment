@@ -1,0 +1,59 @@
+{
+  "app_insights_enabled": false,
+  "code_configuration": {
+    "code": "/subscriptions/ab520303-f925-4938-97a9-317b1fe8ca18/resourceGroups/rg-pcbqc-prod/providers/Microsoft.MachineLearningServices/workspaces/aml-pcbqc-prod/codes/83475531-2b7c-498b-8f8b-fcd82ef2fecc/versions/1",
+    "scoring_script": "score.py"
+  },
+  "endpoint_name": "pcbqc-endpt",
+  "environment": "azureml:/subscriptions/ab520303-f925-4938-97a9-317b1fe8ca18/resourceGroups/rg-pcbqc-prod/providers/Microsoft.MachineLearningServices/workspaces/aml-pcbqc-prod/environments/CliV2AnonymousEnvironment/versions/f400c7650c1058314cb699d821283e2ecc502820993e1099a8ba443d3599223a",
+  "environment_variables": {
+    "AML_APP_ROOT": "/var/azureml-app/scoring",
+    "AZUREML_ENTRY_SCRIPT": "score.py",
+    "AZUREML_MODEL_DIR": "/var/azureml-app/azureml-models/pcbqc-yolo-seg/1",
+    "PCBQC_YOLO_WEIGHTS": "/var/azureml-app/model/best.pt",
+    "SERVICE_NAME": "pcbqc-endpt",
+    "SERVICE_PATH_PREFIX": "api/v1/endpoint/pcbqc-endpt",
+    "YOLO_DEVICE": "cpu"
+  },
+  "id": "/subscriptions/ab520303-f925-4938-97a9-317b1fe8ca18/resourceGroups/rg-pcbqc-prod/providers/Microsoft.MachineLearningServices/workspaces/aml-pcbqc-prod/onlineEndpoints/pcbqc-endpt/deployments/blue",
+  "instance_type": "cpu2-6g",
+  "liveness_probe": {
+    "failure_threshold": 30,
+    "initial_delay": 10,
+    "period": 10,
+    "success_threshold": 1,
+    "timeout": 2
+  },
+  "model": "azureml:/subscriptions/ab520303-f925-4938-97a9-317b1fe8ca18/resourceGroups/rg-pcbqc-prod/providers/Microsoft.MachineLearningServices/workspaces/aml-pcbqc-prod/models/pcbqc-yolo-seg/versions/1",
+  "name": "blue",
+  "properties": {
+    "AzureAsyncOperationUri": "https://management.azure.com/subscriptions/ab520303-f925-4938-97a9-317b1fe8ca18/providers/Microsoft.MachineLearningServices/locations/francecentral/mfeOperationsStatus/odidp:69f1aa26-2a9f-436c-b0a9-f8b1cf5e41f5:a7779100-d8d6-47f0-ac7d-475551ea8dd0?api-version=2023-04-01-preview"
+  },
+  "provisioning_state": "Succeeded",
+  "readiness_probe": {
+    "failure_threshold": 30,
+    "initial_delay": 10,
+    "period": 10,
+    "success_threshold": 1,
+    "timeout": 2
+  },
+  "request_settings": {
+    "max_concurrent_requests_per_instance": 1,
+    "max_queue_wait_ms": 0,
+    "request_timeout_ms": 5000
+  },
+  "resourceGroup": "rg-pcbqc-prod",
+  "resources": {
+    "limits": {},
+    "requests": {}
+  },
+  "scale_settings": {
+    "max_instances": 1,
+    "min_instances": 1,
+    "polling_interval": 1,
+    "target_utilization_percentage": 70,
+    "type": "target_utilization"
+  },
+  "tags": {},
+  "type": "kubernetes"
+}

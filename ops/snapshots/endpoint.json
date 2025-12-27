@@ -1,0 +1,30 @@
+{
+  "auth_mode": "key",
+  "compute": "azureml:/subscriptions/ab520303-f925-4938-97a9-317b1fe8ca18/resourceGroups/rg-pcbqc-prod/providers/Microsoft.MachineLearningServices/workspaces/aml-pcbqc-prod/computes/aks-pcbqc-k8s",
+  "description": "PCBQC inference endpoint on AKS",
+  "id": "/subscriptions/ab520303-f925-4938-97a9-317b1fe8ca18/resourceGroups/rg-pcbqc-prod/providers/Microsoft.MachineLearningServices/workspaces/aml-pcbqc-prod/onlineEndpoints/pcbqc-endpt",
+  "identity": {
+    "principal_id": "9488fbf2-6bc8-40ed-80be-bc7973565c28",
+    "tenant_id": "21e3f437-43d4-4ee7-9670-a6bebd6c9061",
+    "type": "system_assigned"
+  },
+  "kind": "K8S",
+  "location": "francecentral",
+  "mirror_traffic": {},
+  "name": "pcbqc-endpt",
+  "openapi_uri": "http://4.178.8.56/api/v1/endpoint/pcbqc-endpt/swagger.json",
+  "properties": {
+    "AzureAsyncOperationUri": "https://management.azure.com/subscriptions/ab520303-f925-4938-97a9-317b1fe8ca18/providers/Microsoft.MachineLearningServices/locations/francecentral/mfeOperationsStatus/oeidp:69f1aa26-2a9f-436c-b0a9-f8b1cf5e41f5:705d136f-0809-4125-bd49-620d9a4775ce?api-version=2022-02-01-preview",
+    "azureml.onlineendpointid": "/subscriptions/ab520303-f925-4938-97a9-317b1fe8ca18/resourcegroups/rg-pcbqc-prod/providers/microsoft.machinelearningservices/workspaces/aml-pcbqc-prod/onlineendpoints/pcbqc-endpt",
+    "createdAt": "2025-12-25T10:32:45.603045+0000",
+    "createdBy": "Davis JOSEPH",
+    "lastModifiedAt": "2025-12-25T20:32:42.117365+0000"
+  },
+  "provisioning_state": "Succeeded",
+  "resourceGroup": "rg-pcbqc-prod",
+  "scoring_uri": "http://4.178.8.56/api/v1/endpoint/pcbqc-endpt/score",
+  "tags": {},
+  "traffic": {
+    "blue": 100
+  }
+}

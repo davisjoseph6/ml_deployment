@@ -31,6 +31,9 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from ultralytics import YOLO as UltralyticsYOLO
 
+from app.services.aml_infer import score_image_bytes
+from app.services.viz_aml import render_overlay_from_aml
+
 from app.core.config import settings
 from app.services.metrics import compute_metrics
 from app.services.retrain import retrain_manager
@@ -366,6 +369,34 @@ def get_report(name: str) -> Response:
         headers={"Content-Disposition": f'attachment; filename="{name}"'},
     )
 
+@app.post("/api/analyze_aml")
+async def api_analyze_aml(files: List[UploadFile] = File(...)) -> JSONResponse:
+    results: List[Dict[str, Any]] = []
+
+    for f in files:
+        content = await f.read()
+
+        # Use bytes only for AML call (no need to BGR for request)
+        aml_resp = score_image_bytes(content, timeout_s=120.0)
+        detections = aml_resp.get("detections", [])
+        if not isinstance(detections, list):
+            detections = []
+
+        # For overlay we still need the decoded image
+        image_bgr = decode_image_bytes_to_bgr(content)
+        overlay_bgr = render_overlay_from_aml(image_bgr, detections)
+        overlay_b64 = _bgr_to_base64_png(overlay_bgr)
+
+        results.append(
+            {
+                "filename": f.filename,
+                "overlay_png_base64": overlay_b64,
+                "aml": aml_resp,          # full normalized JSON
+                "detections": detections, # convenient direct field
+            }
+        )
+
+    return JSONResponse({"results": results})
 
 @app.post("/api/prelabel")
 async def api_prelabel(file: UploadFile = File(...)) -> JSONResponse:
