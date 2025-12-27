@@ -1,0 +1,29 @@
+{
+  "properties": {
+    "count": 2,
+    "enableAutoScaling": false,
+    "enableEncryptionAtHost": false,
+    "enableFIPS": false,
+    "enableNodePublicIP": false,
+    "enableUltraSSD": false,
+    "kubeletDiskType": "OS",
+    "maxPods": 250,
+    "mode": "System",
+    "orchestratorVersion": "1.33",
+    "osDiskSizeGB": 128,
+    "osDiskType": "Managed",
+    "osSKU": "Ubuntu",
+    "osType": "Linux",
+    "scaleDownMode": "Delete",
+    "securityProfile": {
+      "enableSecureBoot": false,
+      "enableVTPM": false
+    },
+    "type": "VirtualMachineScaleSets",
+    "upgradeSettings": {
+      "maxSurge": "10%",
+      "maxUnavailable": "0"
+    },
+    "vmSize": "Standard_D2s_v4"
+  }
+}
