@@ -1,0 +1,21 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: pcbqc-web
+  namespace: pcbqc
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "20m"
+spec:
+  ingressClassName: webapprouting.kubernetes.azure.com
+  rules:
+  - host: pcbqc.4.251.202.167.nip.io
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: pcbqc-web-svc
+            port:
+              number: 80
+

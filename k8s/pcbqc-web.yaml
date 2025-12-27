@@ -1,0 +1,98 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pcbqc-web
+  namespace: pcbqc
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pcbqc-web
+  template:
+    metadata:
+      labels:
+        app: pcbqc-web
+    spec:
+      containers:
+        - name: web
+          image: acrpcbqc19589.azurecr.io/pcbqc/web:4ce1d2b
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+
+          env:
+            # Make Ultralytics writable
+            - name: YOLO_CONFIG_DIR
+              value: /tmp/Ultralytics
+
+            # Storage (from secret you already created)
+            - name: AZURE_STORAGE_ACCOUNT
+              valueFrom:
+                secretKeyRef:
+                  name: pcbqc-storage
+                  key: AZURE_STORAGE_ACCOUNT
+            - name: AZURE_STORAGE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: pcbqc-storage
+                  key: AZURE_STORAGE_KEY
+
+            # AML online endpoint (from secret you already created)
+            - name: AML_SCORING_URI
+              valueFrom:
+                secretKeyRef:
+                  name: pcbqc-aml
+                  key: AML_SCORING_URI
+            - name: AML_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: pcbqc-aml
+                  key: AML_KEY
+
+            # Containers + queue
+            - name: BLOB_CONTAINER_IMAGES
+              value: images
+            - name: BLOB_CONTAINER_LABELS
+              value: labels
+            - name: BLOB_CONTAINER_RETRAIN
+              value: retrain
+            - name: RETRAIN_QUEUE_NAME
+              value: retrain-requests
+
+          volumeMounts:
+            - name: ultralytics-tmp
+              mountPath: /tmp/Ultralytics
+
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 20
+            periodSeconds: 20
+
+      volumes:
+        - name: ultralytics-tmp
+          emptyDir: {}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pcbqc-web-svc
+  namespace: pcbqc
+spec:
+  selector:
+    app: pcbqc-web
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8000
+  type: ClusterIP
+
