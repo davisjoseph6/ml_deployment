@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pcbqc-retrain-worker
+  namespace: pcbqc
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pcbqc-retrain-worker
+  template:
+    metadata:
+      labels:
+        app: pcbqc-retrain-worker
+    spec:
+      containers:
+      - name: worker
+        image: python:3.10-slim
+        command: ["/bin/sh","-lc"]
+        args:
+          - |
+            pip install --no-cache-dir azure-storage-queue==12.* requests==2.* && \
+            python - <<'PY'
+            import os, time, json, requests
+            from azure.storage.queue import QueueClient
+
+            qname=os.getenv("RETRAIN_QUEUE_NAME","retrain-requests")
+            acct=os.environ["AZURE_STORAGE_ACCOUNT"]
+            key=os.environ["AZURE_STORAGE_KEY"]
+            qc=QueueClient(account_url=f"https://{acct}.queue.core.windows.net", queue_name=qname, credential=key)
+
+            print("worker started, queue=", qname)
+            while True:
+              msgs = qc.receive_messages(messages_per_page=1, visibility_timeout=30)
+              got=False
+              for m in msgs:
+                got=True
+                print("got message:", m.content)
+                qc.delete_message(m)
+              if not got:
+                time.sleep(5)
+            PY
+        env:
+          - name: AZURE_STORAGE_ACCOUNT
+            valueFrom:
+              secretKeyRef:
+                name: pcbqc-storage
+                key: AZURE_STORAGE_ACCOUNT
+          - name: AZURE_STORAGE_KEY
+            valueFrom:
+              secretKeyRef:
+                name: pcbqc-storage
+                key: AZURE_STORAGE_KEY
+          - name: RETRAIN_QUEUE_NAME
+            value: retrain-requests
+
