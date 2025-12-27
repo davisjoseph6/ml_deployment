@@ -1,5 +1,5 @@
 $schema: https://azuremlschemas.azureedge.net/latest/kubernetesOnlineDeployment.schema.json
-name: blue
+name: green
 endpoint_name: pcbqc-endpt
 type: kubernetes
 
