@@ -1,0 +1,3 @@
+k8s/base/Chart.yaml
+k8s/base/values.yaml
+k8s/base/templates/
