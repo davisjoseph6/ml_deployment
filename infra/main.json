@@ -1,0 +1,109 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.39.26.7824",
+      "templateHash": "13663845474741864018"
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "aksDeployment",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "aksName": {
+            "value": "aks-pcbqc-dev-neu-001"
+          },
+          "location": {
+            "value": "northeurope"
+          },
+          "rgName": {
+            "value": "rg-pcbqc-dev-neu-001"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.39.26.7824",
+              "templateHash": "2790723602083474726"
+            }
+          },
+          "parameters": {
+            "aksName": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of the AKS cluster"
+              }
+            },
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Location of the resources"
+              }
+            },
+            "cpuNodePoolName": {
+              "type": "string",
+              "defaultValue": "cpu",
+              "metadata": {
+                "description": "Node pool name for CPU nodes"
+              }
+            },
+            "cpuNodeCount": {
+              "type": "int",
+              "defaultValue": 1,
+              "metadata": {
+                "description": "Node count for CPU nodes"
+              }
+            },
+            "kubernetesVersion": {
+              "type": "string",
+              "defaultValue": "1.31.4",
+              "metadata": {
+                "description": "Kubernetes version"
+              }
+            },
+            "rgName": {
+              "type": "string",
+              "metadata": {
+                "description": "Resource group name"
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.ContainerService/managedClusters",
+              "apiVersion": "2023-05-01",
+              "name": "[parameters('aksName')]",
+              "location": "[parameters('location')]",
+              "properties": {
+                "kubernetesVersion": "[parameters('kubernetesVersion')]",
+                "dnsPrefix": "[parameters('aksName')]",
+                "agentPoolProfiles": [
+                  {
+                    "name": "[parameters('cpuNodePoolName')]",
+                    "count": "[parameters('cpuNodeCount')]",
+                    "vmSize": "Standard_D2s_v3",
+                    "mode": "System",
+                    "osType": "Linux"
+                  }
+                ],
+                "enableRBAC": true
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
